@@ -28,6 +28,9 @@
 #include <sys/stream.h>
 #include <sys/stropts.h>
 #endif
+#ifdef HAVE_GETKERNINFO
+#include <sys/kinfo.h>
+#endif
 
 #define route_t	oroute_t	/* XXX - unixware */
 #include <net/route.h>
@@ -43,8 +46,25 @@
 
 #include "dnet.h"
 
+#if defined(RT_ROUNDUP) && defined(__NetBSD__)
+/* NetBSD defines this macro rounding to 64-bit boundaries.
+   http://fxr.watson.org/fxr/ident?v=NETBSD;i=RT_ROUNDUP */
+#define ROUNDUP(a) RT_ROUNDUP(a)
+#else
+/* Unix Network Programming, 3rd edition says that sockaddr structures in
+   rt_msghdr should be padded so their addresses start on a multiple of
+   sizeof(u_long). But on 64-bit Mac OS X 10.6 at least, this is false. Apple's
+   netstat code uses 4-byte padding, not 8-byte. This is relevant for IPv6
+   addresses, for which sa_len == 28.
+   http://www.opensource.apple.com/source/network_cmds/network_cmds-329.2.2/netstat.tproj/route.c */
+#ifdef __APPLE__
+#define RT_MSGHDR_ALIGNMENT sizeof(uint32_t)
+#else
+#define RT_MSGHDR_ALIGNMENT sizeof(unsigned long)
+#endif
 #define ROUNDUP(a) \
-	((a) > 0 ? (1 + (((a) - 1) | (sizeof(long) - 1))) : sizeof(long))
+	((a) > 0 ? (1 + (((a) - 1) | (RT_MSGHDR_ALIGNMENT - 1))) : RT_MSGHDR_ALIGNMENT)
+#endif
 
 #ifdef HAVE_SOCKADDR_SA_LEN
 #define NEXTSA(s) \
@@ -213,7 +233,34 @@ route_get(route_t *r, struct route_entry *entry)
 	return (0);
 }
 
-#if defined(HAVE_SYS_SYSCTL_H) || defined(HAVE_STREAMS_ROUTE)
+#if defined(HAVE_SYS_SYSCTL_H) || defined(HAVE_STREAMS_ROUTE) || defined(HAVE_GETKERNINFO)
+/* This wrapper around addr_ston, on failure, checks for a gateway address
+ * family of AF_LINK, and if it finds one, stores an all-zero address of the
+ * same type as dst. The all-zero address is a convention for same-subnet
+ * routing table entries. */
+static int
+addr_ston_gateway(const struct addr *dst,
+	const struct sockaddr *sa, struct addr *a)
+{
+	int rc;
+
+	rc = addr_ston(sa, a);
+	if (rc == 0)
+		return rc;
+
+#ifdef HAVE_NET_IF_DL_H
+# ifdef AF_LINK
+	if (sa->sa_family == AF_LINK) {
+		memset(a, 0, sizeof(*a));
+		a->addr_type = dst->addr_type;
+		return (0);
+	}
+# endif
+#endif
+
+	return (-1);
+}
+
 int
 route_loop(route_t *r, route_handler callback, void *arg)
 {
@@ -236,6 +283,21 @@ route_loop(route_t *r, route_handler callback, void *arg)
 		return (-1);
 	
 	if (sysctl(mib, 6, buf, &len, NULL, 0) < 0) {
+		free(buf);
+		return (-1);
+	}
+	lim = buf + len;
+	next = buf;
+#elif defined(HAVE_GETKERNINFO)
+	int len = getkerninfo(KINFO_RT_DUMP,0,0,0);
+
+	if (len == 0)
+		return (0);
+
+	if ((buf = malloc(len)) == NULL)
+		return (-1);
+
+	if (getkerninfo(KINFO_RT_DUMP,buf,&len,0) < 0) {
 		free(buf);
 		return (-1);
 	}
@@ -286,6 +348,8 @@ route_loop(route_t *r, route_handler callback, void *arg)
 
 		if (rtm->rtm_addrs & RTA_NETMASK) {
 			sa = NEXTSA(sa);
+			/* FreeBSD for IPv6 uses a different AF for netmasks. Force the same one. */
+			sa->sa_family = sfam;
 			if (addr_stob(sa, &entry.route_dst.addr_bits) < 0)
 				continue;
 		}

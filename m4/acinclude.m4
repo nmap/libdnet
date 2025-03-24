@@ -155,12 +155,12 @@ dnl results:    HAVE_STREAMS_MIB2
 dnl
 AC_DEFUN([AC_DNET_STREAMS_MIB2],
     [AC_MSG_CHECKING(for SNMP MIB2 STREAMS)
-    AC_CACHE_VAL(ac_cv_dnet_streams_mib2,
-    if test -f /usr/include/inet/mib2.h -a -c /dev/ip ; then
+    AC_CACHE_VAL(ac_cv_dnet_streams_mib2,[
+        if test -f /usr/include/inet/mib2.h -a '(' -c /dev/ip -o -c /dev/arp ')' ; then
         ac_cv_dnet_streams_mib2=yes
     else
         ac_cv_dnet_streams_mib2=no
-    fi)
+    fi])
     AC_MSG_RESULT($ac_cv_dnet_streams_mib2)
     if test $ac_cv_dnet_streams_mib2 = yes ; then
         AC_DEFINE(HAVE_STREAMS_MIB2, 1,
@@ -255,6 +255,26 @@ AC_DEFUN([AC_DNET_RAWIP_COOKED],
     if test $ac_cv_dnet_rawip_cooked = yes ; then
         AC_DEFINE(HAVE_RAWIP_COOKED, 1,
                   [Define if you have cooked raw IP sockets.])
+    fi])
+
+dnl
+dnl Check for getkerninfo
+dnl
+dnl usage:	AC_DNET_GETKERNINFO
+dnl results:	HAVE_GETKERNINFO
+dnl
+AC_DEFUN([AC_DNET_GETKERNINFO],
+    [AC_MSG_CHECKING(for getkerninfo)
+    AC_CACHE_VAL(ac_cv_dnet_getkerninfo,
+        AC_TRY_COMPILE([
+#       include <sys/kinfo.h>],
+        [getkerninfo(KINFO_RT_DUMP, 0, 0, 0);],
+	ac_cv_dnet_getkerninfo=yes,
+	ac_cv_dnet_getkerninfo=no))
+    AC_MSG_RESULT($ac_cv_dnet_getkerninfo)
+    if test $ac_cv_dnet_getkerninfo = yes ; then
+        AC_DEFINE(HAVE_GETKERNINFO, 1,
+	          [Define if <sys/kinfo.h> has getkerninfo.])
     fi])
 
 dnl

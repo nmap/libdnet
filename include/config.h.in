@@ -18,6 +18,9 @@
 /* Define to 1 if you have the <fcntl.h> header file. */
 #undef HAVE_FCNTL_H
 
+/* Define if <sys/kinfo.h> has getkerninfo. */
+#undef HAVE_GETKERNINFO
+
 /* Define to 1 if you have the <hpsecurity.h> header file. */
 #undef HAVE_HPSECURITY_H
 
@@ -78,6 +81,9 @@
 
 /* Define if you have the Linux /proc filesystem. */
 #undef HAVE_LINUX_PROCFS
+
+/* Define to 1 if you have the <netinet/in6_var.h> header file. */
+#undef HAVE_NETINET_IN6_VAR_H
 
 /* Define to 1 if you have the <netinet/in_var.h> header file. */
 #undef HAVE_NETINET_IN_VAR_H
