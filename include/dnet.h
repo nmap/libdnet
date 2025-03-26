@@ -18,6 +18,7 @@
 #include <dnet/arp.h>
 #include <dnet/ndisc.h>
 #include <dnet/icmp.h>
+#include <dnet/icmpv6.h>
 #include <dnet/tcp.h>
 #include <dnet/udp.h>
 #include <dnet/sctp.h>

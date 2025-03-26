@@ -17,14 +17,25 @@
 
 #include "dnet.h"
 
+typedef DWORD (WINAPI *GETIPFORWARDTABLE2)(ADDRESS_FAMILY, PMIB_IPFORWARD_TABLE2 *);
+
 struct route_handle {
+	HINSTANCE iphlpapi;
 	MIB_IPFORWARDTABLE *ipftable;
+	MIB_IPFORWARD_TABLE2 *ipftable2;
 };
 
 route_t *
 route_open(void)
 {
-	return (calloc(1, sizeof(route_t)));
+	route_t *r;
+
+	r = calloc(1, sizeof(route_t));
+	if (r == NULL)
+		return NULL;
+	r->iphlpapi = GetModuleHandle("iphlpapi.dll");
+
+	return r;
 }
 
 int
@@ -109,8 +120,8 @@ route_get(route_t *route, struct route_entry *entry)
 	return (0);
 }
 
-int
-route_loop(route_t *r, route_handler callback, void *arg)
+static int
+route_loop_getipforwardtable(route_t *r, route_handler callback, void *arg)
 {
 	struct route_entry entry;
 	ULONG len;
@@ -120,6 +131,8 @@ route_loop(route_t *r, route_handler callback, void *arg)
 		if (r->ipftable)
 			free(r->ipftable);
 		r->ipftable = malloc(len);
+		if (r->ipftable == NULL)
+			return (-1);
 		ret = GetIpForwardTable(r->ipftable, &len, FALSE);
 		if (ret == NO_ERROR)
 			break;
@@ -145,12 +158,58 @@ route_loop(route_t *r, route_handler callback, void *arg)
 	return (0);
 }
 
+static int
+route_loop_getipforwardtable2(GETIPFORWARDTABLE2 GetIpForwardTable2,
+	route_t *r, route_handler callback, void *arg)
+{
+	struct route_entry entry;
+	ULONG i;
+	int ret;
+	
+	ret = GetIpForwardTable2(AF_UNSPEC, &r->ipftable2);
+	if (ret != NO_ERROR)
+		return (-1);
+
+	for (i = 0; i < r->ipftable2->NumEntries; i++) {
+		MIB_IPFORWARD_ROW2 *row;
+
+		row = &r->ipftable2->Table[i];
+		entry.intf_name[0] = '\0';
+		addr_ston((struct sockaddr *) &row->DestinationPrefix.Prefix, &entry.route_dst);
+		entry.route_dst.addr_bits = row->DestinationPrefix.PrefixLength;
+		addr_ston((struct sockaddr *) &row->NextHop, &entry.route_gw);
+
+		if ((ret = (*callback)(&entry, arg)) != 0)
+			return (ret);
+	}
+
+	return (0);
+}
+
+int
+route_loop(route_t *r, route_handler callback, void *arg)
+{
+	GETIPFORWARDTABLE2 GetIpForwardTable2;
+
+	/* GetIpForwardTable2 is only available on Vista and later, dynamic load. */
+	GetIpForwardTable2 = NULL;
+	if (r->iphlpapi != NULL)
+		GetIpForwardTable2 = (GETIPFORWARDTABLE2) GetProcAddress(r->iphlpapi, "GetIpForwardTable2");
+
+	if (GetIpForwardTable2 == NULL)
+		return route_loop_getipforwardtable(r, callback, arg);
+	else
+		return route_loop_getipforwardtable2(GetIpForwardTable2, r, callback, arg);
+}
+
 route_t *
 route_close(route_t *r)
 {
 	if (r != NULL) {
 		if (r->ipftable != NULL)
 			free(r->ipftable);
+		if (r->ipftable2 != NULL)
+			FreeMibTable(r->ipftable2);
 		free(r);
 	}
 	return (NULL);
