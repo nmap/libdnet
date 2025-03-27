@@ -840,6 +840,21 @@ get_max_bits(const struct addr *a)
 	}
 }
 
+/* Look up an interface from an index, such as a sockaddr_in6.sin6_scope_id. */
+int
+intf_get_index(intf_t *intf, struct intf_entry *entry, int af, unsigned int index)
+{
+	char namebuf[IFNAMSIZ];
+	char *devname;
+
+	/* af is ignored; only used in intf-win32.c. */
+	devname = if_indextoname(index, namebuf);
+	if (devname == NULL)
+		return (-1);
+	strlcpy(entry->intf_name, devname, sizeof(entry->intf_name));
+	return intf_get(intf, entry);
+}
+
 static int
 _match_intf_src(const struct intf_entry *entry, void *arg)
 {
