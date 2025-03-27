@@ -228,6 +228,55 @@ _adapter_address_to_entry(intf_t *intf, IP_ADAPTER_ADDRESSES *a,
 	entry->intf_len = (u_char *)ap - (u_char *)entry;
 }
 
+#define NPCAP_SERVICE_REGISTRY_KEY "SYSTEM\\CurrentControlSet\\Services\\npcap"
+
+int _intf_has_npcap_loopback(void)
+{
+	HKEY hKey;
+	DWORD type, value;
+	int res = 0;
+
+	memset(buffer, 0, buf_size);
+
+	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, NPCAP_SERVICE_REGISTRY_KEY "\\Parameters", 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+	{
+		if (RegQueryValueExA(hKey, "LoopbackAdapter", 0, &type, (LPBYTE)&value, sizeof(value)) == ERROR_SUCCESS && type == REG_DWORD)
+		{
+			res = value ? 1 : 0;
+		}
+
+		RegCloseKey(hKey);
+	}
+
+	return res;
+}
+
+static IP_ADAPTER_ADDRESSES*
+_update_tables_for_npcap_loopback(IP_ADAPTER_ADDRESSES *p)
+{
+	IP_ADAPTER_ADDRESSES *a;
+	static int has_npcap_loopback = -1;
+
+	if (has_npcap_loopback < 0) {
+		has_npcap_loopback = _intf_has_npcap_loopback();
+
+	if (!has_npcap_loopback)
+		return p;
+
+	/* Loop through the addresses looking for the dummy loopback interface from Windows. */
+	for (a = p; a != NULL; a = a->Next) {
+		if (a->IfType == IF_TYPE_SOFTWARE_LOOPBACK) {
+			/* Overwrite the AdapterName from the system's own loopback adapter with
+			 * the NPF_Loopback name. This is what we use to open the adapter with
+			 * Packet.dll later. */
+			a->AdapterName = "NPF_Loopback";
+			break;
+		}
+	}
+
+	return p;
+}
+
 static int
 _refresh_tables(intf_t *intf)
 {
@@ -263,6 +312,8 @@ _refresh_tables(intf_t *intf)
 		free(p);
 		return (-1);
 	}
+	intf->iftable = _update_tables_for_npcap_loopback(p);
+
 	/*
 	 * Map "unfriendly" win32 interface indices to ours.
 	 * XXX - like IP_ADAPTER_INFO ComboIndex
