@@ -8,6 +8,7 @@
 #include "config.h"
 
 #include <iphlpapi.h>
+#include <pcap.h>
 
 #include <ctype.h>
 #include <errno.h>
@@ -38,20 +39,34 @@ struct intf_handle {
 static char *
 _ifcombo_name(int type)
 {
-	char *name = "eth";	/* XXX */
+	char *name = NULL;
 	
-	if (type == MIB_IF_TYPE_TOKENRING) {
-		name = "tr";
-	} else if (type == MIB_IF_TYPE_FDDI) {
-		name = "fddi";
-	} else if (type == MIB_IF_TYPE_PPP) {
-		name = "ppp";
-	} else if (type == MIB_IF_TYPE_LOOPBACK) {
-		name = "lo";
-	} else if (type == MIB_IF_TYPE_SLIP) {
-		name = "sl";
-	} else if (type == MIB_IF_TYPE_TUNNEL) {
-		name = "tun";
+	switch (type) {
+		case MIB_IF_TYPE_ETHERNET:
+		case IF_TYPE_IEEE80211:
+			name = "eth";
+			break;
+		case MIB_IF_TYPE_TOKENRING:
+			name = "tr";
+			break;
+		case MIB_IF_TYPE_FDDI:
+			name = "fddi";
+			break;
+		case MIB_IF_TYPE_PPP:
+			name = "ppp";
+			break;
+		case MIB_IF_TYPE_LOOPBACK:
+			name = "lo";
+			break;
+		case MIB_IF_TYPE_SLIP:
+			name = "sl";
+			break;
+		case MIB_IF_TYPE_TUNNEL:
+			name = "tun";
+			break;
+		default:
+			name = "unk";
+			break;
 	}
 	return (name);
 }
@@ -65,7 +80,7 @@ _ifcombo_type(const char *device)
 		type = INTF_TYPE_ETH;
 	} else if (strncmp(device, "tr", 2) == 0) {
 		type = INTF_TYPE_TOKENRING;
-	} else if (strncmp(device, "fd", 2) == 0) {
+	} else if (strncmp(device, "fddi", 4) == 0) {
 		type = INTF_TYPE_FDDI;
 	} else if (strncmp(device, "ppp", 3) == 0) {
 		type = INTF_TYPE_PPP;
@@ -371,23 +386,27 @@ intf_get_src(intf_t *intf, struct intf_entry *entry, struct addr *src)
 int
 intf_get_dst(intf_t *intf, struct intf_entry *entry, struct addr *dst)
 {
-	MIB_IFROW ifrow;
+	DWORD dwIndex;
+	struct sockaddr sa = {0};
+	IP_ADAPTER_ADDRESSES *a;
+
 	
-	if (dst->addr_type != ADDR_TYPE_IP) {
+	if (0 != addr_ntos(dst, &sa)) {
 		errno = EINVAL;
 		return (-1);
 	}
-	if (GetBestInterface(dst->addr_ip, &ifrow.dwIndex) != NO_ERROR)
+	if (GetBestInterfaceEx(&sa, &dwIndex) != NO_ERROR)
 		return (-1);
 
-	if (GetIfEntry(&ifrow) != NO_ERROR)
-		return (-1);
-	
 	if (_refresh_tables(intf) < 0)
 		return (-1);
 	
-	_ifrow_to_entry(intf, &ifrow, entry);
-	
+	a = _find_adapter_address_by_index(intf, sa.sa_family, dwIndex);
+	if (a == NULL)
+		return (-1);
+
+	_adapter_address_to_entry(intf, a, entry);
+
 	return (0);
 }
 
@@ -458,4 +477,73 @@ intf_close(intf_t *intf)
 		free(intf);
 	}
 	return (NULL);
+}
+
+/* Converts a libdnet interface name to its pcap equivalent. The pcap name is
+   stored in pcapdev up to a length of pcapdevlen, including the terminating
+   '\0'. Returns -1 on error. */
+int
+intf_get_pcap_devname_cached(const char *intf_name, char *pcapdev, int pcapdevlen, int refresh)
+{
+	IP_ADAPTER_ADDRESSES *a;
+	static pcap_if_t *pcapdevs = NULL;
+	pcap_if_t *pdev;
+	intf_t *intf;
+	char errbuf[PCAP_ERRBUF_SIZE];
+
+	if ((intf = intf_open()) == NULL)
+		return (-1);
+	if (_refresh_tables(intf) < 0) {
+		intf_close(intf);
+		return (-1);
+	}
+	a = _find_adapter_address(intf, intf_name);
+
+	if (a == NULL) {
+		intf_close(intf);
+		return (-1);
+	}
+
+  if (refresh) {
+    pcap_freealldevs(pcapdevs);
+    pcapdevs = NULL;
+  }
+
+  if (pcapdevs == NULL) {
+    if (pcap_findalldevs(&pcapdevs, errbuf) == -1) {
+      intf_close(intf);
+      return (-1);
+    }
+  }
+
+	/* Loop through all the pcap devices until we find a match. */
+	for (pdev = pcapdevs; pdev != NULL; pdev = pdev->next) {
+		char *name;
+
+		if (pdev->name == NULL || strlen(pdev->name) < sizeof(_DEVICE_PREFIX))
+			continue;
+		/* "\\Device\\NPF_{GUID}"
+		 * "\\Device\\NPF_Loopback"
+		 * Find the '{'after device prefix.
+		 */
+		name = strchr(pdev->name + sizeof(_DEVICE_PREFIX) - 1, '{');
+		if (name == NULL) {
+			/* If no GUID, just match the whole device name */
+			name = pdev->name + sizeof(_DEVICE_PREFIX) - 1;
+		}
+		if (strcmp(name, a->AdapterName) == 0)
+			break;
+	}
+	if (pdev != NULL)
+		strlcpy(pcapdev, pdev->name, pcapdevlen);
+	intf_close(intf);
+	if (pdev == NULL)
+		return -1;
+	else
+		return 0;
+}
+int
+intf_get_pcap_devname(const char *intf_name, char *pcapdev, int pcapdevlen)
+{
+  return intf_get_pcap_devname_cached(intf_name, pcapdev, pcapdevlen, 0);
 }

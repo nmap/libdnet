@@ -12,10 +12,15 @@
 #include "config.h"
 
 #ifdef _WIN32
-/* XXX */
-# undef _WIN32_WINNT
-# define _WIN32_WINNT 0x0400
-# include <wincrypt.h>
+# ifndef _WIN32_WINNT
+#  define _WIN32_WINNT _WIN32_WINNT_WIN7
+# endif
+# if _WIN32_WINNT >= _WIN32_WINNT_VISTA
+#  include <bcrypt.h>
+#  pragma comment(lib, "bcrypt.lib")
+# else
+#  include <wincrypt.h>
+# endif
 # define inline __inline
 #else
 # include <sys/types.h>
@@ -69,12 +74,17 @@ rand_open(void)
 	rand_t *r;
 	u_char seed[256];
 #ifdef _WIN32
+# if _WIN32_WINNT >= _WIN32_WINNT_VISTA
+	if (STATUS_SUCCESS != BCryptGenRandom(NULL, seed, sizeof(seed), BCRYPT_USE_SYSTEM_PREFERRED_RNG))
+	  return NULL;
+# else
 	HCRYPTPROV hcrypt = 0;
 
 	CryptAcquireContext(&hcrypt, NULL, NULL, PROV_RSA_FULL,
 	    CRYPT_VERIFYCONTEXT);
 	CryptGenRandom(hcrypt, sizeof(seed), seed);
 	CryptReleaseContext(hcrypt, 0);
+#endif
 #else
 	struct timeval *tv = (struct timeval *)seed;
 	int fd;
