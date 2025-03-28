@@ -19,7 +19,6 @@
 
 #include "dnet.h"
 #include <winsock2.h>
-#include "pcap.h"
 
 /* From Npcap's Loopback.h */
 /*

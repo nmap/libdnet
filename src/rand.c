@@ -16,6 +16,7 @@
 #  define _WIN32_WINNT _WIN32_WINNT_WIN7
 # endif
 # if _WIN32_WINNT >= _WIN32_WINNT_VISTA
+#  include <ntstatus.h>
 #  include <bcrypt.h>
 #  pragma comment(lib, "bcrypt.lib")
 # else
