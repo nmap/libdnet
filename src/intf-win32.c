@@ -8,7 +8,9 @@
 #include "config.h"
 
 #include <iphlpapi.h>
+#ifdef HAVE_PCAP_H
 #include <pcap.h>
+#endif
 
 #include <ctype.h>
 #include <errno.h>
@@ -529,6 +531,7 @@ intf_close(intf_t *intf)
 	return (NULL);
 }
 
+#ifdef HAVE_PCAP_H
 #define _DEVICE_PREFIX "\\Device\\"
 /* Converts a libdnet interface name to its pcap equivalent. The pcap name is
    stored in pcapdev up to a length of pcapdevlen, including the terminating
@@ -593,8 +596,13 @@ intf_get_pcap_devname_cached(const char *intf_name, char *pcapdev, int pcapdevle
 	else
 		return 0;
 }
+#endif /* HAVE_PCAP_H */
 int
 intf_get_pcap_devname(const char *intf_name, char *pcapdev, int pcapdevlen)
 {
+#ifdef HAVE_PCAP_H
   return intf_get_pcap_devname_cached(intf_name, pcapdev, pcapdevlen, 0);
+#else
+  return -1;
+#endif
 }
