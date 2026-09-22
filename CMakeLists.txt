@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
 
-project(dnet VERSION 1.18.0 LANGUAGES C)
+project(dnet VERSION 1.18.2 LANGUAGES C)
 
 find_package(TCL)
 
@@ -29,14 +29,12 @@ endforeach ()
 if(WIN32)
     find_package(Packet)
     if(Packet_FOUND)
-        set(HAVE_PACKET32 TRUE)
+        set(HAVE_PACKET32_H TRUE)
         set(HAVE_PCAP_H TRUE)
         include_directories(${Packet_INCLUDE_DIRS})
         set(DNET_LINK_LIBS ${Packet_LIBRARIES} ${DNET_LINK_LIBS})
     endif(Packet_FOUND)
-endif(WIN32)
 
-if (MSVC)
     add_definitions(-DWIN32_LEAN_AND_MEAN)
     check_include_file(winsock2.h HAVE_WINSOCK2_H)
     if(HAVE_WINSOCK2_H)
@@ -57,7 +55,7 @@ if (MSVC)
     set(CMAKE_REQUIRED_LIBRARIES "ws2_32")
     check_symbol_exists(inet_pton WS2tcpip.h HAVE_INET_PTON)
     cmake_pop_check_state()
-endif()
+endif(WIN32)
 if(UNIX)
     foreach (header strings.h
             unistd.h sys/bufmod.h sys/dlpi.h sys/dlpihdr.h sys/dlpi_ext.h
@@ -211,7 +209,7 @@ else()
     list(APPEND PLATFORM_SOURCES src/arp-none.c)
 endif()
 
-if (HAVE_PACKET32)
+if (HAVE_PACKET32_H)
     list(APPEND PLATFORM_SOURCES src/eth-win32.c)
 elseif(HAVE_NET_PFILT_H)
     list(APPEND PLATFORM_SOURCES src/eth-pfilt.c)

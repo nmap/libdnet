@@ -37,7 +37,6 @@ test/check/Makefile
 test/dnet/Makefile
 
 # Generated libs/binaries from make
-autom4te.cache/
 src/.libs/
 test/dnet/.libs/
 test/dnet/dnet
@@ -54,3 +53,6 @@ test/check/check_ip
 test/check/check_rand
 test/check/check_route
 python/test-suite.log
+
+# Generated cache from m4
+autom4te.cache
