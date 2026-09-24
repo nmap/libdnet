@@ -36,7 +36,7 @@ if(WIN32)
     endif(Packet_FOUND)
 
     set(WIN32_LEAN_AND_MEAN TRUE)
-    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS)
     check_include_file(winsock2.h HAVE_WINSOCK2_H)
     if(HAVE_WINSOCK2_H)
         set(HAVE_SOCKADDR_IN6 TRUE)
